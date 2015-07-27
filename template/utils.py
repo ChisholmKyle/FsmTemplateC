@@ -29,9 +29,6 @@ _utils_incl_template = Template("""\
 """)
 
 _utils_fcns_template = Template("""\
-#define _POSIX_C_SOURCE 200809L
-#include <unistd.h>
-
 /* ***************
  * Include Files *
  * ***************/
