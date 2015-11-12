@@ -5,11 +5,15 @@ _fsm_decl_include_list = []
 _fsm_fcns_include_list = []
 
 _fsm_decl_template = Template("""\
+/* function options (EDIT) */
+typedef void * {{param.fopts.type}};
+
 /* transition check */
 typedef enum e{{ param.type }}Check {
 \tE{{ prefix|upper }}_TR_RETREAT,
 \tE{{ prefix|upper }}_TR_ADVANCE,
-\tE{{ prefix|upper }}_TR_CONTINUE
+\tE{{ prefix|upper }}_TR_CONTINUE,
+\tE{{ prefix|upper }}_TR_NEW
 } e{{ param.type }}Check;
 
 /* states (enum) */
@@ -25,6 +29,7 @@ typedef struct {{ param.type }} {
 \te{{ param.type }}Check check;
 \te{{ param.type }}State cur;
 \te{{ param.type }}State cmd;
+\te{{ param.type }}State new;
 \tvoid (***state_transitions)(struct {{ param.type }} *, {{param.fopts.type}});
 \tvoid (*run)(struct {{ param.type }} *, {{param.fopts.type}});
 } {{ param.type }};
@@ -37,11 +42,11 @@ typedef void (*p{{ param.type }}StateTransitions)\
 {%  for stateone in param.states -%}
 {%- for statetwo in param.states -%}
 void {{ prefix|lower }}_{{ stateone|lower }}_{{ statetwo|lower }} \
-({{ param.type }} *fsm, {{param.fopts.type}}{{param.fopts.name}});
+({{ param.type }} *fsm, {{param.fopts.type}} *{{param.fopts.name}});
 {%  endfor -%}
 {%  endfor -%}
 void {{ prefix|lower }}_run ({{ param.type }} *fsm, \
-{{param.fopts.type}}{{param.fopts.name}});
+{{param.fopts.type}} *{{param.fopts.name}});
 
 /* creation macro */
 #define {{ prefix|upper }}_CREATE() \\
@@ -49,6 +54,7 @@ void {{ prefix|lower }}_run ({{ param.type }} *fsm, \
 \t.check = E{{ prefix|upper }}_TR_CONTINUE, \\
 \t.cur = E{{ prefix|upper }}_ST_{{ param.states|first|upper }}, \\
 \t.cmd = E{{ prefix|upper }}_ST_{{ param.states|first|upper }}, \\
+\t.new = E{{ prefix|upper }}_ST_{{ param.states|first|upper }}, \\
 \t.state_transitions = (p{{ param.type }}StateTransitions * \
 [E{{ prefix|upper }}_NUM_STATES]) { \\
 {%  for stateone in param.states %}\t\t(p{{ param.type }}StateTransitions \
@@ -68,19 +74,20 @@ void {{ prefix|lower }}_run ({{ param.type }} *fsm, \
 """)
 
 _fsm_fcns_template = Template("""\
-/*
-    RUNNING STATE FUNCTIONS
- */
+/*--------------------------*
+ *  RUNNING STATE FUNCTIONS *
+ *--------------------------*/
+
 {% for state in param.states -%}
 /* continue in state {{ state }} */
 void {{ prefix|lower }}_{{ state|lower }}_{{ state|lower }} \
-({{ param.type }} *fsm, {{param.fopts.type}}{{param.fopts.name}}) {
+({{ param.type }} *fsm, {{param.fopts.type}} *{{param.fopts.name}}) {
 
     /* check if this function was called from a transition. */
     if (fsm->check == E{{ prefix|upper }}_TR_ADVANCE) {
-        /* transitioned successfully from fsm->cur to fsm->cmd (here) */
+        /* transitioned from fsm->cur to fsm->cmd (here) */
     } else if (fsm->check == E{{ prefix|upper }}_TR_RETREAT) {
-        /* failed to transition to fsm->cmd, fell back to fsm->cur (here) */
+        /* fell back to fsm->cur (here) from fsm->cmd */
     } else {
         /* no prior transition (fsm->check == E{{ prefix|upper }}_TR_CONTINUE) */
     }
@@ -88,42 +95,82 @@ void {{ prefix|lower }}_{{ state|lower }}_{{ state|lower }} \
 }
 {% endfor %}
 
-/*
-    TRANSITION FUNCTIONS
-    perform guard checks and transitional operations
-    then set fsm->check = E{{ prefix|upper }}_TR_ADVANCE; if it's OK
- */
+/*----------------------*
+ * TRANSITION FUNCTIONS *
+ *----------------------*/
 {%  for stateone in param.states -%}{%  for statetwo in param.states -%}
 {% if (stateone != statetwo) %}
+/**
+ *  @brief Transition function from `{{ stateone|lower }}` to `{{ statetwo|lower }}`
+ *
+ *  @details
+ *
+ *  To advance to '{{ statetwo|lower }}' state, set
+ *  `fsm->check = E{{ prefix|upper }}_TR_ADVANCE;`
+ *  To return to '{{ stateone|lower }}' state, set
+ *  `fsm->check = E{{ prefix|upper }}_TR_RETREAT;`
+ *  To continue in this transition at next step, set
+ *  `fsm->check = E{{ prefix|upper }}_TR_CONTINUE;`
+ */
 void {{ prefix|lower }}_{{ stateone|lower }}_{{ statetwo|lower }} \
-({{ param.type }} *fsm, {{param.fopts.type}}{{param.fopts.name}}) {
+({{ param.type }} *fsm, {{param.fopts.type}} *{{param.fopts.name}}) {
 
+    /* by default, do not transition (guard/retreat) */
+    (void)({{param.fopts.name}});
     fsm->check = E{{ prefix|upper }}_TR_RETREAT;
 
-    /* write code here. Optionally allow for transition to advance
-       by setting fsm->check = E{{ prefix|upper }}_TR_ADVANCE; */
+    /* check if this transition was just entered from a running state. */
+    if (fsm->check == E{{ prefix|upper }}_TR_NEW) {
+        /* first call of this transition function from '{{ stateone|lower }}' state */
+    } else {
+        /* continued with this transition from last step */
+    }
+    /* NOTE: Before returning from this funciton,
+       Consider setting transition to
+       advance: fsm->check = E{{ prefix|upper }}_TR_ADVANCE;
+       or
+       continue: fsm->check = E{{ prefix|upper }}_TR_CONTINUE; */
 
 }
 {% endif -%}
 {% endfor %}
 {% endfor %}
 
-/* execute transition function */
-void {{ prefix|lower }}_run ({{ param.type }} *fsm, \
-{{param.fopts.type}}{{param.fopts.name}}) {
+/*-----------------------------*
+ * EXECUTE TRANSITION FUNCTION *
+ *-----------------------------*/
 
-    fsm->state_transitions[fsm->cur][fsm->cmd](fsm, fopts);
+void {{ prefix|lower }}_run ({{ param.type }} *fsm, \
+{{param.fopts.type}} *{{param.fopts.name}}) {
+
+    /* if a new state is requested */
+    if (fsm->new != fsm->cmd
+        && fsm->cmd == fsm->cur) {
+        /* can only call when not in transition
+           ie. The transition process must relinquish control by setting
+           E{{ prefix|upper }}_TR_RETREAT or
+           E{{ prefix|upper }}_TR_ADVANCE
+           before a fsm->new is set
+        */
+        fsm->cmd = fsm->new;
+        fsm->check = E{{ prefix|upper }}_TR_NEW;
+    }
+
+    /* run process */
+    fsm->state_transitions[fsm->cur][fsm->cmd](fsm, {{param.fopts.name}});
 
     /* advance to requested state or return to current state */
     if (fsm->cmd != fsm->cur) {
         if (fsm->check == E{{ prefix|upper }}_TR_ADVANCE) {
-            fsm->state_transitions[fsm->cmd][fsm->cmd](fsm, fopts);
+            fsm->state_transitions[fsm->cmd][fsm->cmd](fsm, {{param.fopts.name}});
             fsm->cur = fsm->cmd;
-        } else {
-            fsm->state_transitions[fsm->cur][fsm->cur](fsm, fopts);
+        } else if (fsm->check == E{{ prefix|upper }}_TR_RETREAT) {
+            fsm->state_transitions[fsm->cur][fsm->cur](fsm, {{param.fopts.name}});
             fsm->cmd = fsm->cur;
+            fsm->new = fsm->cmd;
         }
     }
+
     /* continue running */
     fsm->check = E{{ prefix|upper }}_TR_CONTINUE;
 }

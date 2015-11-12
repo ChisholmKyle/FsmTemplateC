@@ -11,12 +11,13 @@ fsm_param = {
     # struct type string
     'type': 'FsmExample',
     # list of states (can be any length)
-    'states': ['one', 'two', 'three', 'four']
-    # optional data type and name for passing data to state machine functions
-    # 'fopts': {
-    #     'type': 'FsmExampleFopts *',
-    #     'name': 'example_fopts'
-    # }
+    'states': ['one', 'two', 'three', 'four'],
+    # struct type and name for passing data to state machine functions
+    # by pointer
+    'fopts': {
+        'type': 'FsmExampleFopts',
+        'name': 'fopts'
+    }
 }
 
 # folder to contain generated code
