@@ -4,30 +4,24 @@ sys.path.append(os.path.abspath("../"))
 import template.fsm as fsm
 
 # function prefix
-prefix = 'fsm_example'
+prefix = 'fsm_turnstile'
 
 # dict parameter for generating FSM
 fsm_param = {
     # struct type string
-    'type': 'FsmExample',
-    # list of states (can be any length)
-    'states': ['one', 'two', 'three', 'four'],
+    'type': 'FsmTurnstile',
+    # list of states
+    'states': ['locked', 'unlocked'],
     # struct type and name for passing data to state machine functions
     # by pointer
     'fopts': {
-        'type': 'FsmExampleFopts',
+        'type': 'FsmTurnstileFopts',
         'name': 'fopts'
-    },
-    # state two can only transition to states one and four
-    # state three can only transition to state one
-    'transitionmask': {
-        'two': ['one', 'four'],
-        'three': ['one']
     }
 }
 
 # folder to contain generated code
-folder = 'fsm_example'
+folder = 'turnstile_example'
 
 # generate FSM code
 code = fsm.Fsm(fsm_param).genccode(folder, prefix)

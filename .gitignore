@@ -41,6 +41,10 @@ Thumbs.db
 
 # Python compiled code #
 *.pyc
+__pychache__
 
 # generated code from example #
 example/fsm_example
+
+# PyCharm files
+.idea

@@ -1,19 +1,63 @@
-from template import utils
+import os
+import errno
 from jinja2 import Template
 
-_fsm_decl_include_list = []
-_fsm_fcns_include_list = []
+_fsm_header_template = Template("""\
+#ifndef {{ header.basename|upper }}_H
+#define {{ header.basename|upper }}_H
+
+/* ***************
+ * Include Files *
+ * ***************/
+
+{% for inc_file in header.include -%}
+#include "{{ inc_file }}"
+{%- endfor %}
+
+/* ***************************
+ * Typedefs and Declarations *
+ * ***************************/
+
+{% for code_snippet in header.code -%}
+{{ code_snippet }}
+
+{% endfor %}
+#endif
+""")
+
+_fsm_src_template = Template("""\
+#define _POSIX_C_SOURCE 200809L
+#include <unistd.h>
+
+/* ***************
+ * Include Files *
+ * ***************/
+
+{% for inc_file in src.include -%}
+#include "{{ inc_file }}"
+{%- endfor %}
+
+/* ***********
+ * Functions *
+ * ***********/
+
+{% for code_snippet in src.code -%}
+{{ code_snippet }}
+
+{% endfor %}
+""")
 
 _fsm_decl_template = Template("""\
 /* function options (EDIT) */
-typedef void * {{param.fopts.type}};
+typedef struct {{param.fopts.type}} {
+    /* define your options struct here */
+} {{param.fopts.type}};
 
 /* transition check */
 typedef enum e{{ param.type }}Check {
 \tE{{ prefix|upper }}_TR_RETREAT,
 \tE{{ prefix|upper }}_TR_ADVANCE,
-\tE{{ prefix|upper }}_TR_CONTINUE,
-\tE{{ prefix|upper }}_TR_NEW
+\tE{{ prefix|upper }}_TR_CONTINUE
 } e{{ param.type }}Check;
 
 /* states (enum) */
@@ -29,20 +73,21 @@ typedef struct {{ param.type }} {
 \te{{ param.type }}Check check;
 \te{{ param.type }}State cur;
 \te{{ param.type }}State cmd;
-\te{{ param.type }}State new;
-\tvoid (***state_transitions)(struct {{ param.type }} *, {{param.fopts.type}});
-\tvoid (*run)(struct {{ param.type }} *, {{param.fopts.type}});
+\tvoid (***state_transitions)(struct {{ param.type }} *, {{param.fopts.type}} *);
+\tvoid (*run)(struct {{ param.type }} *, {{param.fopts.type}} *);
 } {{ param.type }};
 
-/* transition ficntions */
+/* transition functions */
 typedef void (*p{{ param.type }}StateTransitions)\
-(struct {{ param.type }} *, void *);
+(struct {{ param.type }} *, {{param.fopts.type}} *);
 
 /* fsm declarations */
 {%  for stateone in param.states -%}
 {%- for statetwo in param.states -%}
+{%- if not stateone in param.transitionmask or statetwo in param.transitionmask[stateone] -%}
 void {{ prefix|lower }}_{{ stateone|lower }}_{{ statetwo|lower }} \
 ({{ param.type }} *fsm, {{param.fopts.type}} *{{param.fopts.name}});
+{%  endif -%}
 {%  endfor -%}
 {%  endfor -%}
 void {{ prefix|lower }}_run ({{ param.type }} *fsm, \
@@ -54,13 +99,16 @@ void {{ prefix|lower }}_run ({{ param.type }} *fsm, \
 \t.check = E{{ prefix|upper }}_TR_CONTINUE, \\
 \t.cur = E{{ prefix|upper }}_ST_{{ param.states|first|upper }}, \\
 \t.cmd = E{{ prefix|upper }}_ST_{{ param.states|first|upper }}, \\
-\t.new = E{{ prefix|upper }}_ST_{{ param.states|first|upper }}, \\
 \t.state_transitions = (p{{ param.type }}StateTransitions * \
 [E{{ prefix|upper }}_NUM_STATES]) { \\
 {%  for stateone in param.states %}\t\t(p{{ param.type }}StateTransitions \
 [E{{ prefix|upper }}_NUM_STATES]) { \\
 {% for statetwo in param.states %}\t\t\t\
+{% if stateone in param.transitionmask and not statetwo in param.transitionmask[stateone] -%}
+NULL
+{%- else -%}
 {{ prefix|lower }}_{{ stateone|lower }}_{{ statetwo|lower }}
+{%- endif -%}
 {%- if loop.last %} \\
 {% else -%}, \\
 {% endif -%}
@@ -77,9 +125,10 @@ _fsm_fcns_template = Template("""\
 /*--------------------------*
  *  RUNNING STATE FUNCTIONS *
  *--------------------------*/
-
-{% for state in param.states -%}
-/* continue in state {{ state }} */
+{% for state in param.states %}
+/**
+ *  @brief Running function in state `{{ state|lower }}`
+ */
 void {{ prefix|lower }}_{{ state|lower }}_{{ state|lower }} \
 ({{ param.type }} *fsm, {{param.fopts.type}} *{{param.fopts.name}}) {
 
@@ -99,7 +148,8 @@ void {{ prefix|lower }}_{{ state|lower }}_{{ state|lower }} \
  * TRANSITION FUNCTIONS *
  *----------------------*/
 {%  for stateone in param.states -%}{%  for statetwo in param.states -%}
-{% if (stateone != statetwo) %}
+{% if (stateone != statetwo) -%}
+{% if not stateone in param.transitionmask or statetwo in param.transitionmask[stateone] %}
 /**
  *  @brief Transition function from `{{ stateone|lower }}` to `{{ statetwo|lower }}`
  *
@@ -109,8 +159,6 @@ void {{ prefix|lower }}_{{ state|lower }}_{{ state|lower }} \
  *  `fsm->check = E{{ prefix|upper }}_TR_ADVANCE;`
  *  To return to '{{ stateone|lower }}' state, set
  *  `fsm->check = E{{ prefix|upper }}_TR_RETREAT;`
- *  To continue in this transition at next step, set
- *  `fsm->check = E{{ prefix|upper }}_TR_CONTINUE;`
  */
 void {{ prefix|lower }}_{{ stateone|lower }}_{{ statetwo|lower }} \
 ({{ param.type }} *fsm, {{param.fopts.type}} *{{param.fopts.name}}) {
@@ -119,55 +167,43 @@ void {{ prefix|lower }}_{{ stateone|lower }}_{{ statetwo|lower }} \
     (void)({{param.fopts.name}});
     fsm->check = E{{ prefix|upper }}_TR_RETREAT;
 
-    /* check if this transition was just entered from a running state. */
-    if (fsm->check == E{{ prefix|upper }}_TR_NEW) {
-        /* first call of this transition function from '{{ stateone|lower }}' state */
-    } else {
-        /* continued with this transition from last step */
-    }
-    /* NOTE: Before returning from this funciton,
+    /* Transition code goes here.
+
+       NOTE: Before returning from this function,
        Consider setting transition to
-       advance: fsm->check = E{{ prefix|upper }}_TR_ADVANCE;
-       or
-       continue: fsm->check = E{{ prefix|upper }}_TR_CONTINUE; */
+       advance: fsm->check = E{{ prefix|upper }}_TR_ADVANCE; */
 
 }
 {% endif -%}
-{% endfor %}
+{% endif -%}
+{% endfor -%}
 {% endfor %}
 
-/*-----------------------------*
- * EXECUTE TRANSITION FUNCTION *
- *-----------------------------*/
+/*-------------------*
+ * RUN STATE MACHINE *
+ *-------------------*/
 
+/**
+ *  @brief Run state machine
+ */
 void {{ prefix|lower }}_run ({{ param.type }} *fsm, \
 {{param.fopts.type}} *{{param.fopts.name}}) {
 
-    /* if a new state is requested */
-    if (fsm->new != fsm->cmd
-        && fsm->cmd == fsm->cur) {
-        /* can only call when not in transition
-           ie. The transition process must relinquish control by setting
-           E{{ prefix|upper }}_TR_RETREAT or
-           E{{ prefix|upper }}_TR_ADVANCE
-           before a fsm->new is set
-        */
-        fsm->cmd = fsm->new;
-        fsm->check = E{{ prefix|upper }}_TR_NEW;
-    }
-
     /* run process */
-    fsm->state_transitions[fsm->cur][fsm->cmd](fsm, {{param.fopts.name}});
+    if (fsm->state_transitions[fsm->cur][fsm->cmd] == NULL) {
+        fsm->check = E{{ prefix|upper }}_TR_RETREAT;
+    } else {
+        fsm->state_transitions[fsm->cur][fsm->cmd](fsm, {{param.fopts.name}});
+    }
 
     /* advance to requested state or return to current state */
     if (fsm->cmd != fsm->cur) {
         if (fsm->check == E{{ prefix|upper }}_TR_ADVANCE) {
             fsm->state_transitions[fsm->cmd][fsm->cmd](fsm, {{param.fopts.name}});
             fsm->cur = fsm->cmd;
-        } else if (fsm->check == E{{ prefix|upper }}_TR_RETREAT) {
+        } else {
             fsm->state_transitions[fsm->cur][fsm->cur](fsm, {{param.fopts.name}});
             fsm->cmd = fsm->cur;
-            fsm->new = fsm->cmd;
         }
     }
 
@@ -176,55 +212,78 @@ void {{ prefix|lower }}_run ({{ param.type }} *fsm, \
 }
 """)
 
+def mkdir_p(path):
+    """Helper function to mimic bash command 'mkdir -p'"""
+    try:
+        os.makedirs(path)
+    except OSError as exc:
+        if exc.errno == errno.EEXIST and os.path.isdir(path):
+            pass
+        else:
+            raise
+
 
 class Fsm(object):
-    """UKF parameters"""
     def __init__(self, fsm_param):
+        """FSM parameters"""
 
         self.param = {
             'type': fsm_param['type'],
-            'states': utils.copy(fsm_param['states']),
+            'states': fsm_param['states'],
             'fopts': {
-                'type': 'void *',
+                'type': 'FsmOpts',
                 'name': 'fopts'
-            }
-        }
-
-        if ('fopts' in fsm_param):
-            utils.ifexistscopy(['type', 'name'],
-                               self.param['fopts'],
-                               fsm_param['fopts'])
-
-    def ccodesnippets(self, prefix, init=None, oneline=None):
-        """Create C code initialization string snippet"""
-
-        fsm_prefix = prefix
-        fsm_param = utils.copy(self.param)
-
-        fsm_decl = _fsm_decl_template.render(prefix=fsm_prefix,
-                                             param=fsm_param)
-        fsm_fcns = _fsm_fcns_template.render(prefix=fsm_prefix,
-                                             param=fsm_param)
-
-        code = {
-            'include': {
-                'snippets': [fsm_decl],
-                'inclfiles': _fsm_decl_include_list
             },
-            'fcns': {
-                'snippets': [fsm_fcns],
-                'inclfiles': _fsm_fcns_include_list
-            }
+            'transitionmask': {}
         }
 
-        return code
+        if 'fopts' in fsm_param:
+            if 'type' in fsm_param['fopts']:
+                self.param['fopts']['type'] = fsm_param['fopts']['type']
+            if 'name' in fsm_param['fopts']:
+                self.param['fopts']['name'] = fsm_param['fopts']['name']
 
-    def ccodefiles(self, folder, prefix, subfolder=None):
-        """Create C code files"""
+        if 'transitionmask' in fsm_param:
+            self.param['transitionmask'] = fsm_param['transitionmask']
 
-        code = self.ccodesnippets(prefix, oneline=False)
+    def genccode(self, folder, prefix):
+        """Create C code"""
 
-        utils.ccodefilesfromclass(folder,
-                                  prefix,
-                                  code,
-                                  subfolder=subfolder)
+        # render code templates
+        fsm_decl = _fsm_decl_template.render(prefix=prefix,
+                                             param=self.param)
+        fsm_fcns = _fsm_fcns_template.render(prefix=prefix,
+                                             param=self.param)
+
+        # include file
+        header = {
+            'filename': "{b}.h".format(b=prefix),
+            'basename': prefix,
+            'code': [fsm_decl],
+            'include': []
+        }
+
+        # src file
+        src = {
+            'filename': "{b}.c".format(b=prefix),
+            'code': [fsm_fcns],
+            'include': [header['filename']]
+        }
+
+        # code wrapper templates
+        header_str = _fsm_header_template.render(header=header)
+        src_str = _fsm_src_template.render(src=src)
+
+        # make directory
+        path = os.path.abspath(folder)
+        mkdir_p(path)
+
+        # write header file
+        f = open(os.path.join(path, header['filename']), "w")
+        f.write(header_str)
+        f.close()
+
+        # write source file
+        f = open(os.path.join(path, src['filename']), "w")
+        f.write(src_str)
+        f.close()
