@@ -49,15 +49,16 @@ _fsm_src_template = Template("""\
 
 _fsm_decl_template = Template("""\
 /* function options (EDIT) */
-typedef struct {{param.fopts.type}} {
+typedef struct {{ param.fopts.type }} {
     /* define your options struct here */
-} {{param.fopts.type}};
+} {{ param.fopts.type }};
 
 /* transition check */
 typedef enum e{{ param.type }}Check {
 \tE{{ prefix|upper }}_TR_RETREAT,
 \tE{{ prefix|upper }}_TR_ADVANCE,
-\tE{{ prefix|upper }}_TR_CONTINUE
+\tE{{ prefix|upper }}_TR_CONTINUE,
+\tE{{ prefix|upper }}_TR_BADINPUT
 } e{{ param.type }}Check;
 
 /* states (enum) */
@@ -68,43 +69,74 @@ typedef enum e{{ param.type }}State {
 \tE{{ prefix|upper }}_NUM_STATES
 } e{{ param.type }}State;
 
+/* inputs (enum) */
+typedef enum e{{ param.type }}Input {
+{%- for input in param.inputs %}
+\tE{{ prefix|upper }}_IN_{{ input|upper }},
+{%- endfor %}
+\tE{{ prefix|upper }}_NUM_INPUTS,
+\tE{{ prefix|upper }}_NOINPUT
+} e{{ param.type }}Input;
+
 /* finite state machine struct */
 typedef struct {{ param.type }} {
+\te{{ param.type }}Input input;
 \te{{ param.type }}Check check;
 \te{{ param.type }}State cur;
 \te{{ param.type }}State cmd;
-\tvoid (***state_transitions)(struct {{ param.type }} *, {{param.fopts.type}} *);
-\tvoid (*run)(struct {{ param.type }} *, {{param.fopts.type}} *);
+\te{{ param.type }}State **transition_table;
+\tvoid (***state_transitions)(struct {{ param.type }} *, {{ param.fopts.type }} *);
+\tvoid (*run)(struct {{ param.type }} *, {{ param.fopts.type }} *, const e{{ param.type }}Input);
 } {{ param.type }};
 
 /* transition functions */
 typedef void (*p{{ param.type }}StateTransitions)\
-(struct {{ param.type }} *, {{param.fopts.type}} *);
+(struct {{ param.type }} *, {{ param.fopts.type }} *);
 
 /* fsm declarations */
 {%  for stateone in param.states -%}
 {%- for statetwo in param.states -%}
-{%- if not stateone in param.transitionmask or statetwo in param.transitionmask[stateone] -%}
+{%- if stateone == statetwo or not stateone in param.transitiontable or statetwo in param.transitiontable[stateone] -%}
 void {{ prefix|lower }}_{{ stateone|lower }}_{{ statetwo|lower }} \
-({{ param.type }} *fsm, {{param.fopts.type}} *{{param.fopts.name}});
+({{ param.type }} *fsm, {{ param.fopts.type }} *{{ param.fopts.name }});
 {%  endif -%}
 {%  endfor -%}
 {%  endfor -%}
 void {{ prefix|lower }}_run ({{ param.type }} *fsm, \
-{{param.fopts.type}} *{{param.fopts.name}});
+{{ param.fopts.type }} *{{ param.fopts.name }}, \
+const e{{ param.type }}Input input);
 
 /* creation macro */
 #define {{ prefix|upper }}_CREATE() \\
 { \\
+\t.input = E{{ prefix|upper }}_NOINPUT, \\
 \t.check = E{{ prefix|upper }}_TR_CONTINUE, \\
 \t.cur = E{{ prefix|upper }}_ST_{{ param.states|first|upper }}, \\
 \t.cmd = E{{ prefix|upper }}_ST_{{ param.states|first|upper }}, \\
+\t.transition_table = (e{{ param.type }}State * \
+[E{{ prefix|upper }}_NUM_STATES]) { \\
+{%  for state in param.states %}\t\t(e{{ param.type }}State \
+[E{{ prefix|upper }}_NUM_INPUTS]) { \\
+{% for next_state in param.transitiontable[state] %}\t\t\t\
+{%  if next_state in param.states -%}
+E{{ prefix|upper }}_ST_{{ next_state|upper }}
+{%- else -%}
+E{{ prefix|upper }}_ST_{{ state|upper }}
+{%- endif %}
+{%- if loop.last %} \\
+{%  else -%}, \\
+{%  endif -%}
+{%- endfor -%}
+{%- if loop.last %}\t\t} \\
+{%  else %}\t\t}, \\
+{%  endif -%}
+{%- endfor %}\t}, \\
 \t.state_transitions = (p{{ param.type }}StateTransitions * \
 [E{{ prefix|upper }}_NUM_STATES]) { \\
 {%  for stateone in param.states %}\t\t(p{{ param.type }}StateTransitions \
 [E{{ prefix|upper }}_NUM_STATES]) { \\
 {% for statetwo in param.states %}\t\t\t\
-{% if stateone in param.transitionmask and not statetwo in param.transitionmask[stateone] -%}
+{% if not stateone == statetwo and stateone in param.transitiontable and not statetwo in param.transitiontable[stateone] -%}
 NULL
 {%- else -%}
 {{ prefix|lower }}_{{ stateone|lower }}_{{ statetwo|lower }}
@@ -130,7 +162,7 @@ _fsm_fcns_template = Template("""\
  *  @brief Running function in state `{{ state|lower }}`
  */
 void {{ prefix|lower }}_{{ state|lower }}_{{ state|lower }} \
-({{ param.type }} *fsm, {{param.fopts.type}} *{{param.fopts.name}}) {
+({{ param.type }} *fsm, {{ param.fopts.type }} *{{ param.fopts.name }}) {
 
     /* check if this function was called from a transition. */
     if (fsm->check == E{{ prefix|upper }}_TR_ADVANCE) {
@@ -149,7 +181,7 @@ void {{ prefix|lower }}_{{ state|lower }}_{{ state|lower }} \
  *----------------------*/
 {%  for stateone in param.states -%}{%  for statetwo in param.states -%}
 {% if (stateone != statetwo) -%}
-{% if not stateone in param.transitionmask or statetwo in param.transitionmask[stateone] %}
+{% if not stateone in param.transitiontable or statetwo in param.transitiontable[stateone] %}
 /**
  *  @brief Transition function from `{{ stateone|lower }}` to `{{ statetwo|lower }}`
  *
@@ -161,10 +193,10 @@ void {{ prefix|lower }}_{{ state|lower }}_{{ state|lower }} \
  *  `fsm->check = E{{ prefix|upper }}_TR_RETREAT;`
  */
 void {{ prefix|lower }}_{{ stateone|lower }}_{{ statetwo|lower }} \
-({{ param.type }} *fsm, {{param.fopts.type}} *{{param.fopts.name}}) {
+({{ param.type }} *fsm, {{ param.fopts.type }} *{{ param.fopts.name }}) {
 
     /* by default, do not transition (guard/retreat) */
-    (void)({{param.fopts.name}});
+    (void)({{ param.fopts.name }});
     fsm->check = E{{ prefix|upper }}_TR_RETREAT;
 
     /* Transition code goes here.
@@ -187,27 +219,39 @@ void {{ prefix|lower }}_{{ stateone|lower }}_{{ statetwo|lower }} \
  *  @brief Run state machine
  */
 void {{ prefix|lower }}_run ({{ param.type }} *fsm, \
-{{param.fopts.type}} *{{param.fopts.name}}) {
+{{ param.fopts.type }} *{{ param.fopts.name }}, \
+const e{{ param.type }}Input input) {
+
+    /* transition table - get command from input */
+    if (input < E{{ prefix|upper }}_NUM_INPUTS) {
+        fsm->input = input;
+        fsm->cmd = fsm->transition_table[fsm->cur][input];
+        if (fsm->cmd == fsm->cur) {
+            /* not able to go to new input */
+            fsm->check = E{{ prefix|upper }}_TR_BADINPUT;
+        }
+    }
 
     /* run process */
     if (fsm->state_transitions[fsm->cur][fsm->cmd] == NULL) {
         fsm->check = E{{ prefix|upper }}_TR_RETREAT;
     } else {
-        fsm->state_transitions[fsm->cur][fsm->cmd](fsm, {{param.fopts.name}});
+        fsm->state_transitions[fsm->cur][fsm->cmd](fsm, {{ param.fopts.name }});
     }
 
     /* advance to requested state or return to current state */
     if (fsm->cmd != fsm->cur) {
         if (fsm->check == E{{ prefix|upper }}_TR_ADVANCE) {
-            fsm->state_transitions[fsm->cmd][fsm->cmd](fsm, {{param.fopts.name}});
+            fsm->state_transitions[fsm->cmd][fsm->cmd](fsm, {{ param.fopts.name }});
             fsm->cur = fsm->cmd;
         } else {
-            fsm->state_transitions[fsm->cur][fsm->cur](fsm, {{param.fopts.name}});
+            fsm->state_transitions[fsm->cur][fsm->cur](fsm, {{ param.fopts.name }});
             fsm->cmd = fsm->cur;
         }
     }
 
     /* continue running */
+    fsm->input = E{{ prefix|upper }}_NOINPUT;
     fsm->check = E{{ prefix|upper }}_TR_CONTINUE;
 }
 """)
@@ -230,11 +274,12 @@ class Fsm(object):
         self.param = {
             'type': fsm_param['type'],
             'states': fsm_param['states'],
+            'inputs': fsm_param['inputs'],
+            'transitiontable': fsm_param['transitiontable'],
             'fopts': {
-                'type': 'FsmOpts',
+                'type': fsm_param['type'] + 'Opts',
                 'name': 'fopts'
-            },
-            'transitionmask': {}
+            }
         }
 
         if 'fopts' in fsm_param:
@@ -243,8 +288,6 @@ class Fsm(object):
             if 'name' in fsm_param['fopts']:
                 self.param['fopts']['name'] = fsm_param['fopts']['name']
 
-        if 'transitionmask' in fsm_param:
-            self.param['transitionmask'] = fsm_param['transitionmask']
 
     def genccode(self, folder, prefix):
         """Create C code"""

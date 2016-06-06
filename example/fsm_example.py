@@ -8,21 +8,20 @@ prefix = 'fsm_example'
 
 # dict parameter for generating FSM
 fsm_param = {
-    # struct type string
+    # struct type base name
     'type': 'FsmExample',
-    # list of states (can be any length)
+    # list of states (can be any length > 0)
     'states': ['one', 'two', 'three', 'four'],
-    # struct type and name for passing data to state machine functions
-    # by pointer
-    'fopts': {
-        'type': 'FsmExampleFopts',
-        'name': 'fopts'
-    },
-    # state two can only transition to states one and four
-    # state three can only transition to state one
-    'transitionmask': {
-        'two': ['one', 'four'],
-        'three': ['one']
+    # list of inputs (can be any length > 0)
+    'inputs': ['a', 'b', 'c'],
+    # map inputs to commands (next desired state) using a transition table
+    # index corresponds to 'inputs' array
+    # for this example, index 0 is 'a', index 1 is 'b', and index 2 is 'c'
+    'transitiontable': {
+        'one':   [  'two',     '', 'four'],
+        'two':   ['three',  'one',     ''],
+        'three': [  'two', 'four',  'one'],
+        'four':  [     '',  'one',     '']
     }
 }
 

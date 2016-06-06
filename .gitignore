@@ -44,7 +44,8 @@ Thumbs.db
 __pychache__
 
 # generated code from example #
-example/fsm_example
+example/fsm_example/
+example/turnstile_example/
 
 # PyCharm files
 .idea
