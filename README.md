@@ -33,19 +33,19 @@ The standard terminal output should look like
 
     INPUT   STATE   MESSAGE
 
-    -   0
-    push    0   could not push locked turnstile
-    -   0
-    coin    1   unlocked turnstile
-    -   1
-    -   1
-    push    0   locked turnstile
-    -   0
-    push    0   could not push locked turnstile
-    coin    1   unlocked turnstile
-    coin    1   wasted money on unlocked turnstile
-    -   1
-    push    0   locked turnstile
+    -       0
+    push    0       could not push locked turnstile
+    -       0
+    coin    1       unlocked turnstile
+    -       1
+    -       1
+    push    0       locked turnstile
+    -       0
+    push    0       could not push locked turnstile
+    coin    1       unlocked turnstile
+    coin    1       wasted money on unlocked turnstile
+    -       1
+    push    0       locked turnstile
 
 ## Current Status ##
 
