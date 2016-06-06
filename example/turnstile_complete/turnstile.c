@@ -80,7 +80,7 @@ int main(void) {
     }
 
     /* output results */
-    printf("\ninput\tstate\tmsg\n");
+    printf("\nINPUT\tSTATE\tMESSAGE\n");
     for (size_t k = 0; k < num_iters; k++) {
         printf("\n%s\t%d\t%s", PRINT_INPUT(saved_input[k]), saved_state[k], saved_msg[k]);
     }

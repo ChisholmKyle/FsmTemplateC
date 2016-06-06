@@ -49,3 +49,6 @@ example/turnstile_example/
 
 # PyCharm files
 .idea
+
+# Sublime Text
+*.sublime-workspace
