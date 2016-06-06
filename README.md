@@ -49,4 +49,4 @@ The standard terminal output should look like
 
 ## Current Status ##
 
-This is a minimal and custom implementation which is not intended to replace a more formalized and feature-rich library susch as [SCM](http://smc.sourceforge.net) and there's no formal documentation. Only this README, examples, and the generated code have comments that may help you get started. If you want to add any feautures, examples, documentation or fix some bugs, get in touch with the maintainer(s).
+This is a minimal and custom implementation which is not intended to replace a more formalized and feature-rich library such as [SCM](http://smc.sourceforge.net) and there's no formal documentation. Only this README, examples, and the generated code have comments that may help you get started. Please feel free to add any features, examples, documentation or fix some bugs!
