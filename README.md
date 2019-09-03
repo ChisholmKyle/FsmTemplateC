@@ -8,7 +8,7 @@ This small Python3 module generates skeleton C code for a finite state machine (
 
 ## Prerequisites ##
 
-Python3 with the [Jinja2](http://jinja.pocoo.org) module is required. A C99 compliant compiler is required to compile the generated C code (gcc or clang, for example). A POSIX macro is defined at the beginning of the generated source file but is not required and can be safely removed.
+Python3 with the [Jinja2](http://jinja.pocoo.org) module is required. A C compiler is required to compile the generated C code (gcc or clang, for example).
 
 ## Try it out ##
 
@@ -24,10 +24,10 @@ To run the example [fsm_example.py](example/fsm_example.py), on the command line
 and have a look at the output source and header files generated in the newly-created
 subdirectory fsm_example. Note that the `python3` command calls python 3.x and may be different on your machine.
 
-You can also run a basic [turnstile state machine](https://en.wikipedia.org/wiki/Finite-state_machine#Example:_coin-operated_turnstile). The initial skeleton code is generated from the script [turnstile_example.py](example/turnstile_example.py). The skeleton code was modified to add the appropriate functionality and a complete C code example can be complied from the [example/turnstile_complete](example/turnstile_complete) folder. Assuming `gcc` is installed, compile and run the C code from a terminal as follows:
+You can also run a basic [turnstile state machine](https://en.wikipedia.org/wiki/Finite-state_machine#Example:_coin-operated_turnstile). The initial skeleton code is generated from the script [turnstile_example.py](example/turnstile_example.py). The skeleton code was modified to add the appropriate functionality and a complete C code example can be complied from the [example/turnstile_complete](example/turnstile_complete) folder. Assuming `make` and `gcc` are installed, compile and run the C code from a terminal as follows:
 
     cd turnstile_complete
-    gcc -std=c99 fsm_turnstile.c turnstile.c && ./a.out
+    make && ./turnstile
 
 The standard terminal output should look like
 
