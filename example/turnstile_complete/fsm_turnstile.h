@@ -1,12 +1,6 @@
 #ifndef FSM_TURNSTILE_H
 #define FSM_TURNSTILE_H
 
-/* ***************
- * Include Files *
- * ***************/
-
-
-
 /* ***************************
  * Typedefs and Declarations *
  * ***************************/
@@ -61,35 +55,12 @@ void fsm_turnstile_unlocked_locked (FsmTurnstile *fsm, FsmTurnstileFopts *fopts)
 void fsm_turnstile_unlocked_unlocked (FsmTurnstile *fsm, FsmTurnstileFopts *fopts);
 void fsm_turnstile_run (FsmTurnstile *fsm, FsmTurnstileFopts *fopts, const eFsmTurnstileInput input);
 
-/* creation macro */
-#define FSM_TURNSTILE_CREATE() \
-{ \
-	.input = EFSM_TURNSTILE_NOINPUT, \
-	.check = EFSM_TURNSTILE_TR_CONTINUE, \
-	.cur = EFSM_TURNSTILE_ST_LOCKED, \
-	.cmd = EFSM_TURNSTILE_ST_LOCKED, \
-	.transition_table = (eFsmTurnstileState * [EFSM_TURNSTILE_NUM_STATES]) { \
-		(eFsmTurnstileState [EFSM_TURNSTILE_NUM_INPUTS]) { \
-			EFSM_TURNSTILE_ST_UNLOCKED, \
-			EFSM_TURNSTILE_ST_LOCKED \
-		}, \
-		(eFsmTurnstileState [EFSM_TURNSTILE_NUM_INPUTS]) { \
-			EFSM_TURNSTILE_ST_UNLOCKED, \
-			EFSM_TURNSTILE_ST_LOCKED \
-		} \
-	}, \
-	.state_transitions = (pFsmTurnstileStateTransitions * [EFSM_TURNSTILE_NUM_STATES]) { \
-		(pFsmTurnstileStateTransitions [EFSM_TURNSTILE_NUM_STATES]) { \
-			fsm_turnstile_locked_locked, \
-			fsm_turnstile_locked_unlocked \
-		}, \
-		(pFsmTurnstileStateTransitions [EFSM_TURNSTILE_NUM_STATES]) { \
-			fsm_turnstile_unlocked_locked, \
-			fsm_turnstile_unlocked_unlocked \
-		} \
-	}, \
-	.run = fsm_turnstile_run \
-}
+/* create */
+FsmTurnstile *fsm_turnstile_create(void);
+
+/* free */
+void fsm_turnstile_free (FsmTurnstile *fsm);
+
 
 
 #endif

@@ -21,11 +21,12 @@ int main(void) {
     const char *saved_msg[NUM_ITERS];
 
     /* create fsm */
-    FsmTurnstile fsm = FSM_TURNSTILE_CREATE();
+    FsmTurnstile *fsm = fsm_turnstile_create();
+    if (fsm == NULL) return 1;
+
     /* create fopts */
-    FsmTurnstileFopts fopts = {
-        .msg = ""
-    };
+    FsmTurnstileFopts fopts;
+
     /* initialize input */
     eFsmTurnstileInput input = EFSM_TURNSTILE_NOINPUT;
 
@@ -71,11 +72,11 @@ int main(void) {
         }
 
         /* run state machine */
-        fsm.run(&fsm, &fopts, input);
+        fsm_turnstile_run (fsm, &fopts, input);
 
         /* save state for output */
         saved_input[k] = input;
-        saved_state[k] = fsm.cur;
+        saved_state[k] = fsm->cur;
         saved_msg[k] = fopts.msg;
     }
 
@@ -85,6 +86,9 @@ int main(void) {
         printf("\n%s\t%d\t%s", PRINT_INPUT(saved_input[k]), saved_state[k], saved_msg[k]);
     }
     printf("\n");
+
+    fsm_turnstile_free(fsm);
+    fsm = NULL;
 
     return 0;
 }

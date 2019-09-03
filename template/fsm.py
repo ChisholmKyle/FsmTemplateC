@@ -6,14 +6,6 @@ _fsm_header_template = Template("""\
 #ifndef {{ header.basename|upper }}_H
 #define {{ header.basename|upper }}_H
 
-/* ***************
- * Include Files *
- * ***************/
-
-{% for inc_file in header.include -%}
-#include "{{ inc_file }}"
-{%- endfor %}
-
 /* ***************************
  * Typedefs and Declarations *
  * ***************************/
@@ -26,8 +18,8 @@ _fsm_header_template = Template("""\
 """)
 
 _fsm_src_template = Template("""\
-#define _POSIX_C_SOURCE 200809L
-#include <unistd.h>
+
+#include <malloc.h>
 
 /* ***************
  * Include Files *
@@ -106,51 +98,12 @@ void {{ prefix|lower }}_run ({{ param.type }} *fsm, \
 {{ param.fopts.type }} *{{ param.fopts.name }}, \
 const e{{ param.type }}Input input);
 
-/* creation macro */
-#define {{ prefix|upper }}_CREATE() \\
-{ \\
-\t.input = E{{ prefix|upper }}_NOINPUT, \\
-\t.check = E{{ prefix|upper }}_TR_CONTINUE, \\
-\t.cur = E{{ prefix|upper }}_ST_{{ param.states|first|upper }}, \\
-\t.cmd = E{{ prefix|upper }}_ST_{{ param.states|first|upper }}, \\
-\t.transition_table = (e{{ param.type }}State * \
-[E{{ prefix|upper }}_NUM_STATES]) { \\
-{%  for state in param.states %}\t\t(e{{ param.type }}State \
-[E{{ prefix|upper }}_NUM_INPUTS]) { \\
-{% for next_state in param.transitiontable[state] %}\t\t\t\
-{%  if next_state in param.states -%}
-E{{ prefix|upper }}_ST_{{ next_state|upper }}
-{%- else -%}
-E{{ prefix|upper }}_ST_{{ state|upper }}
-{%- endif %}
-{%- if loop.last %} \\
-{%  else -%}, \\
-{%  endif -%}
-{%- endfor -%}
-{%- if loop.last %}\t\t} \\
-{%  else %}\t\t}, \\
-{%  endif -%}
-{%- endfor %}\t}, \\
-\t.state_transitions = (p{{ param.type }}StateTransitions * \
-[E{{ prefix|upper }}_NUM_STATES]) { \\
-{%  for stateone in param.states %}\t\t(p{{ param.type }}StateTransitions \
-[E{{ prefix|upper }}_NUM_STATES]) { \\
-{% for statetwo in param.states %}\t\t\t\
-{% if not stateone == statetwo and stateone in param.transitiontable and not statetwo in param.transitiontable[stateone] -%}
-NULL
-{%- else -%}
-{{ prefix|lower }}_{{ stateone|lower }}_{{ statetwo|lower }}
-{%- endif -%}
-{%- if loop.last %} \\
-{% else -%}, \\
-{% endif -%}
-{%- endfor -%}
-{%- if loop.last %}\t\t} \\
-{% else %}\t\t}, \\
-{% endif -%}
-{%- endfor %}\t}, \\
-\t.run = {{ prefix|lower }}_run \\
-}
+/* create */
+{{ param.type }} *{{ prefix|lower }}_create(void);
+
+/* free */
+void {{ prefix|lower }}_free ({{ param.type }} *fsm);
+
 """)
 
 _fsm_fcns_template = Template("""\
@@ -253,6 +206,120 @@ const e{{ param.type }}Input input) {
     /* continue running */
     fsm->input = E{{ prefix|upper }}_NOINPUT;
     fsm->check = E{{ prefix|upper }}_TR_CONTINUE;
+}
+
+/*----------------------*
+ * CREATE STATE MACHINE *
+ *----------------------*/
+
+/**
+ *  @brief Create state machine
+ */
+{{ param.type }} * {{ prefix|lower }}_create (void) {
+
+    {{ param.type }} *fsm = ({{ param.type }} *) malloc(sizeof({{ param.type }}));
+    if (fsm == NULL) {
+        return NULL;
+    }
+
+    fsm->input = E{{ prefix|upper }}_NOINPUT;
+    fsm->check = E{{ prefix|upper }}_TR_CONTINUE;
+    fsm->cur = E{{ prefix|upper }}_ST_{{ param.states|first|upper }};
+    fsm->cmd = E{{ prefix|upper }}_ST_{{ param.states|first|upper }};
+    fsm->run = {{ prefix|lower }}_run;
+
+    // set future pointer allocations to NULL
+    fsm->transition_table = NULL;
+    fsm->state_transitions = NULL;
+
+    /* transition table */
+
+    fsm->transition_table = (e{{ param.type }}State **) malloc(E{{ prefix|upper }}_NUM_STATES * sizeof(e{{ param.type }}State *));
+    if (fsm->transition_table == NULL) {
+        {{ prefix|lower }}_free(fsm);
+        return NULL;
+    }
+    // set future pointer allocations to NULL
+    for (int k = 0; k < E{{ prefix|upper }}_NUM_STATES; k++) {
+        fsm->transition_table[k] = NULL;
+    }
+    {%-  for state in param.states %}{% set stateloop = loop %}
+
+    fsm->transition_table[{{ stateloop.index - 1 }}] = (e{{ param.type }}State *) malloc(E{{ prefix|upper }}_NUM_INPUT *, sizeof(e{{ param.type }}State));
+    if (fsm->transition_table[{{ stateloop.index - 1 }}] == NULL) {
+        {{ prefix|lower }}_free(fsm);
+        return NULL;
+    }
+    {%  for next_state in param.transitiontable[state] %}
+    {% if next_state in param.states -%}
+    fsm->transition_table[{{ stateloop.index - 1 }}][{{ loop.index - 1 }}] = E{{ prefix|upper }}_ST_{{ next_state|upper }};
+    {%- else -%}
+    fsm->transition_table[{{ stateloop.index - 1 }}][{{ loop.index - 1 }}] = E{{ prefix|upper }}_ST_{{ state|upper }};
+    {%- endif -%}
+    {%- endfor %}
+    {%- endfor %}
+
+    /* state transitions */
+
+    fsm->state_transitions = (p{{ param.type }}StateTransitions **) malloc(E{{ prefix|upper }}_NUM_STATES * sizeof(p{{ param.type }}StateTransitions *));
+    if (fsm->state_transitions == NULL) {
+        {{ prefix|lower }}_free(fsm);
+        return NULL;
+    }
+    // set future pointer allocations to NULL
+    for (int k = 0; k < E{{ prefix|upper }}_NUM_STATES; k++) {
+        fsm->state_transitions[k] = NULL;
+    }
+    {%-  for stateone in param.states %}{% set stateoneloop = loop %}
+
+    fsm->state_transitions[{{ stateoneloop.index - 1 }}] = (p{{ param.type }}StateTransitions *) malloc(E{{ prefix|upper }}_NUM_STATES * sizeof(p{{ param.type }}StateTransitions));
+    if (fsm->state_transitions[{{ stateoneloop.index - 1 }}] == NULL) {
+        {{ prefix|lower }}_free(fsm);
+        return NULL;
+    }
+    {% for statetwo in param.states %}
+    {% if not stateone == statetwo and stateone in param.transitiontable and not statetwo in param.transitiontable[stateone] -%}
+    fsm->state_transitions[{{ stateoneloop.index - 1 }}][{{ loop.index - 1 }}] = NULL;
+    {%- else -%}
+    fsm->state_transitions[{{ stateoneloop.index - 1 }}][{{ loop.index - 1 }}] = {{ prefix|lower }}_{{ stateone|lower }}_{{ statetwo|lower }};
+    {%- endif -%}
+    {%- endfor %}
+    {%- endfor %}
+
+    return fsm;
+
+}
+
+
+/**
+ *  @brief Free state machine
+ */
+void {{ prefix|lower }}_free ({{ param.type }} *fsm) {
+    if (fsm != NULL) {
+        if (fsm->transition_table != NULL) {
+            for (int k = 0; k < E{{ prefix|upper }}_NUM_STATES; ++k)
+            {
+                if (fsm->transition_table[k] != NULL) {
+                    free(fsm->transition_table[k]);
+                    fsm->transition_table[k] = NULL;
+                }
+            }
+            free(fsm->transition_table);
+            fsm->transition_table = NULL;
+        }
+        if (fsm->state_transitions != NULL) {
+            for (int k = 0; k < E{{ prefix|upper }}_NUM_STATES; ++k)
+            {
+                if (fsm->state_transitions[k] != NULL) {
+                    free(fsm->state_transitions[k]);
+                    fsm->state_transitions[k] = NULL;
+                }
+            }
+            free(fsm->state_transitions);
+            fsm->state_transitions = NULL;
+        }
+    }
+    free(fsm);
 }
 """)
 

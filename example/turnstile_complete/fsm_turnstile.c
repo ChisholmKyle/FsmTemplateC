@@ -1,5 +1,5 @@
-#define _POSIX_C_SOURCE 200809L
-#include <unistd.h>
+
+#include <malloc.h>
 
 /* ***************
  * Include Files *
@@ -113,5 +113,125 @@ void fsm_turnstile_run (FsmTurnstile *fsm, FsmTurnstileFopts *fopts, const eFsmT
     /* continue running */
     fsm->input = EFSM_TURNSTILE_NOINPUT;
     fsm->check = EFSM_TURNSTILE_TR_CONTINUE;
+}
+
+/*----------------------*
+ * CREATE STATE MACHINE *
+ *----------------------*/
+
+/**
+ *  @brief Create state machine
+ */
+FsmTurnstile * fsm_turnstile_create (void) {
+
+    FsmTurnstile *fsm = (FsmTurnstile *) malloc(sizeof(FsmTurnstile));
+    if (fsm == NULL) {
+        return NULL;
+    }
+
+    fsm->input = EFSM_TURNSTILE_NOINPUT;
+    fsm->check = EFSM_TURNSTILE_TR_CONTINUE;
+    fsm->cur = EFSM_TURNSTILE_ST_LOCKED;
+    fsm->cmd = EFSM_TURNSTILE_ST_LOCKED;
+    fsm->run = fsm_turnstile_run;
+
+    // set future pointer allocations to NULL
+    fsm->transition_table = NULL;
+    fsm->state_transitions = NULL;
+
+    /* transition table */
+
+    fsm->transition_table = (eFsmTurnstileState **) malloc(EFSM_TURNSTILE_NUM_STATES * sizeof(eFsmTurnstileState *));
+    if (fsm->transition_table == NULL) {
+        fsm_turnstile_free(fsm);
+        return NULL;
+    }
+    // set future pointer allocations to NULL
+    for (int k = 0; k < EFSM_TURNSTILE_NUM_STATES; k++) {
+        fsm->transition_table[k] = NULL;
+    }
+
+    fsm->transition_table[0] = (eFsmTurnstileState *) malloc(EFSM_TURNSTILE_NUM_INPUTS * sizeof(eFsmTurnstileState));
+    if (fsm->transition_table[0] == NULL) {
+        fsm_turnstile_free(fsm);
+        return NULL;
+    }
+    
+    fsm->transition_table[0][0] = EFSM_TURNSTILE_ST_UNLOCKED;
+    fsm->transition_table[0][1] = EFSM_TURNSTILE_ST_LOCKED;
+
+    fsm->transition_table[1] = (eFsmTurnstileState *) malloc(EFSM_TURNSTILE_NUM_INPUTS * sizeof(eFsmTurnstileState));
+    if (fsm->transition_table[1] == NULL) {
+        fsm_turnstile_free(fsm);
+        return NULL;
+    }
+    
+    fsm->transition_table[1][0] = EFSM_TURNSTILE_ST_UNLOCKED;
+    fsm->transition_table[1][1] = EFSM_TURNSTILE_ST_LOCKED;
+
+    /* state transitions */
+
+    fsm->state_transitions = (pFsmTurnstileStateTransitions **) malloc(EFSM_TURNSTILE_NUM_STATES * sizeof(pFsmTurnstileStateTransitions *));
+    if (fsm->state_transitions == NULL) {
+        fsm_turnstile_free(fsm);
+        return NULL;
+    }
+    // set future pointer allocations to NULL
+    for (int k = 0; k < EFSM_TURNSTILE_NUM_STATES; k++) {
+        fsm->state_transitions[k] = NULL;
+    }
+
+    fsm->state_transitions[0] = (pFsmTurnstileStateTransitions *) malloc(EFSM_TURNSTILE_NUM_STATES * sizeof(pFsmTurnstileStateTransitions));
+    if (fsm->state_transitions[0] == NULL) {
+        fsm_turnstile_free(fsm);
+        return NULL;
+    }
+    
+    fsm->state_transitions[0][0] = fsm_turnstile_locked_locked;
+    fsm->state_transitions[0][1] = fsm_turnstile_locked_unlocked;
+
+    fsm->state_transitions[1] = (pFsmTurnstileStateTransitions *) malloc(EFSM_TURNSTILE_NUM_STATES * sizeof(pFsmTurnstileStateTransitions));
+    if (fsm->state_transitions[1] == NULL) {
+        fsm_turnstile_free(fsm);
+        return NULL;
+    }
+    
+    fsm->state_transitions[1][0] = fsm_turnstile_unlocked_locked;
+    fsm->state_transitions[1][1] = fsm_turnstile_unlocked_unlocked;
+
+    return fsm;
+
+}
+
+
+/**
+ *  @brief Free state machine
+ */
+void fsm_turnstile_free (FsmTurnstile *fsm) {
+    if (fsm != NULL) {
+        if (fsm->transition_table != NULL) {
+            for (int k = 0; k < EFSM_TURNSTILE_NUM_STATES; ++k)
+            {
+                if (fsm->transition_table[k] != NULL) {
+                    free(fsm->transition_table[k]);
+                    fsm->transition_table[k] = NULL;
+                }
+            }
+            free(fsm->transition_table);
+            fsm->transition_table = NULL;
+        }
+        if (fsm->state_transitions != NULL) {
+            for (int k = 0; k < EFSM_TURNSTILE_NUM_STATES; ++k)
+            {
+                if (fsm->state_transitions[k] != NULL) {
+                    free(fsm->state_transitions[k]);
+                    fsm->state_transitions[k] = NULL;
+                }
+            }
+            free(fsm->state_transitions);
+            fsm->state_transitions = NULL;
+        }
+    }
+    free(fsm);
 }
 

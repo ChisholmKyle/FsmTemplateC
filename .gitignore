@@ -41,7 +41,7 @@ Thumbs.db
 
 # Python compiled code #
 *.pyc
-__pychache__
+__pycache__
 
 # generated code from example #
 example/fsm_example/
@@ -52,3 +52,10 @@ example/turnstile_example/
 
 # Sublime Text
 *.sublime-workspace
+
+# virtual environment
+.venv/
+venv/
+
+# build directory
+**/build/
