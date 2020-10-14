@@ -245,7 +245,7 @@ const e{{ param.type }}Input input) {
     }
     {%-  for state in param.states %}{% set stateloop = loop %}
 
-    fsm->transition_table[{{ stateloop.index - 1 }}] = (e{{ param.type }}State *) malloc(E{{ prefix|upper }}_NUM_INPUT *, sizeof(e{{ param.type }}State));
+    fsm->transition_table[{{ stateloop.index - 1 }}] = (e{{ param.type }}State *) malloc(E{{ prefix|upper }}_NUM_INPUTS * sizeof(e{{ param.type }}State));
     if (fsm->transition_table[{{ stateloop.index - 1 }}] == NULL) {
         {{ prefix|lower }}_free(fsm);
         return NULL;
