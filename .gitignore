@@ -42,6 +42,7 @@ Thumbs.db
 # Python compiled code #
 *.pyc
 __pycache__
+*.egg-info
 
 # generated code from example #
 example/fsm_example/
@@ -52,6 +53,9 @@ example/turnstile_example/
 
 # Sublime Text
 *.sublime-workspace
+
+# VS Code
+.vscode
 
 # virtual environment
 .venv/

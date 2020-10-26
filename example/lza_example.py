@@ -1,6 +1,5 @@
 import sys
 import os
-sys.path.append(os.path.abspath("../"))
 import template.fsm as fsm
 
 # Example courtesy of https://github.com/Borbonjuggler
@@ -38,4 +37,4 @@ prefix = 'fsm_LZA'
 folder = 'fsm_LZA'
 
 # generate FSM code
-code = fsm.Fsm(fsm_param).genccode(folder, prefix)
+fsm.Fsm(fsm_param).genccode(folder, prefix)

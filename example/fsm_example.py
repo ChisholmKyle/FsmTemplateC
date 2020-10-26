@@ -1,6 +1,5 @@
 import sys
 import os
-sys.path.append(os.path.abspath("../"))
 import template.fsm as fsm
 
 # function prefix
@@ -29,4 +28,11 @@ fsm_param = {
 folder = 'fsm_example'
 
 # generate FSM code
-code = fsm.Fsm(fsm_param).genccode(folder, prefix)
+fsm.Fsm(fsm_param).genccode(folder, prefix)
+
+# folder to contain generated code
+folder = 'fsm_example_cpp'
+# C++ interface (optional)
+fsm_param['cpp'] = True
+# generate FSM code
+fsm.Fsm(fsm_param).genccode(folder, prefix)

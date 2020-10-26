@@ -12,7 +12,6 @@ _fsm_header_template = Template("""\
 
 {% for code_snippet in header.code -%}
 {{ code_snippet }}
-
 {% endfor %}
 #endif
 """)
@@ -40,6 +39,11 @@ _fsm_src_template = Template("""\
 """)
 
 _fsm_decl_template = Template("""\
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 /* function options (EDIT) */
 typedef struct {{ param.fopts.type }} {
     /* define your options struct here */
@@ -78,7 +82,6 @@ typedef struct {{ param.type }} {
 \te{{ param.type }}State cmd;
 \te{{ param.type }}State **transition_table;
 \tvoid (***state_transitions)(struct {{ param.type }} *, {{ param.fopts.type }} *);
-\tvoid (*run)(struct {{ param.type }} *, {{ param.fopts.type }} *, const e{{ param.type }}Input);
 } {{ param.type }};
 
 /* transition functions */
@@ -93,17 +96,21 @@ void {{ prefix|lower }}_{{ stateone|lower }}_{{ statetwo|lower }} \
 ({{ param.type }} *fsm, {{ param.fopts.type }} *{{ param.fopts.name }});
 {%  endif -%}
 {%  endfor -%}
-{%  endfor -%}
+{%  endfor %}
+/* create */
+{{ param.type }} *{{ prefix|lower }}_create(void);
+
+/* run */
 void {{ prefix|lower }}_run ({{ param.type }} *fsm, \
 {{ param.fopts.type }} *{{ param.fopts.name }}, \
 const e{{ param.type }}Input input);
 
-/* create */
-{{ param.type }} *{{ prefix|lower }}_create(void);
-
 /* free */
 void {{ prefix|lower }}_free ({{ param.type }} *fsm);
 
+#ifdef __cplusplus
+}
+#endif
 """)
 
 _fsm_fcns_template = Template("""\
@@ -226,7 +233,6 @@ const e{{ param.type }}Input input) {
     fsm->check = E{{ prefix|upper }}_TR_CONTINUE;
     fsm->cur = E{{ prefix|upper }}_ST_{{ param.states|first|upper }};
     fsm->cmd = E{{ prefix|upper }}_ST_{{ param.states|first|upper }};
-    fsm->run = {{ prefix|lower }}_run;
 
     // set future pointer allocations to NULL
     fsm->transition_table = NULL;
@@ -323,6 +329,195 @@ void {{ prefix|lower }}_free ({{ param.type }} *fsm) {
 }
 """)
 
+_fsm_decl_cpp_template = Template("""\
+
+/* function options (EDIT) */
+typedef struct {{ param.fopts.type }} {
+    /* define your options struct here */
+} {{ param.fopts.type }};
+
+class {{ param.type }} 
+{
+    public:
+
+        {{ param.type }}();
+
+        /* states (enum) */
+        enum {{ param.type }}State
+        {
+            {%- for i,state in enumerate(param.states) %}
+            ST_{{ state|upper }} = {{ i }},
+            {%- endfor %}
+            NUM_STATES
+        };
+        
+        /* inputs (enum) */
+        enum {{ param.type }}Input
+        {
+            {%- for i,input in enumerate(param.inputs) %}
+            IN_{{ input|upper }} = {{ i }},
+            {%- endfor %}
+            NUM_INPUTS,
+            IN_NOINPUT
+        };
+
+        /* transition check */
+        enum {{ param.type }}Check
+        {
+            TR_RETREAT,
+            TR_ADVANCE,
+            TR_CONTINUE,
+            TR_BADINPUT
+        };
+
+        void Run(const {{ param.type }}Input input, {{ param.fopts.type }} &{{ param.fopts.name }});
+
+    private:
+        
+        /* finite state machine */
+        {{ param.type }}Input m_input;
+        {{ param.type }}Check m_check;
+        {{ param.type }}State m_cur;
+        {{ param.type }}State m_cmd;
+        {{ param.type }}State m_transition_table[{{ param.states|length }}][{{ param.inputs|length }}];
+        void ({{ param.type }} ::*m_state_transitions[{{ param.states|length }}][{{ param.states|length }}])({{ param.fopts.type }} &);
+
+        /* fsm declarations */
+        {%  for stateone in param.states -%}
+        {%- for statetwo in param.states -%}
+        {%- if stateone == statetwo or (stateone in param.transitiontable and statetwo in param.transitiontable[stateone]) -%}
+        void transition_{{ stateone|lower }}_{{ statetwo|lower }} ({{ param.fopts.type }} &{{ param.fopts.name }});
+        {%  endif -%}
+        {%  endfor -%}
+        {%  endfor %}
+};
+
+inline {{ param.type }}::{{ param.type }}() :
+    m_input(IN_NOINPUT),
+    m_check(TR_CONTINUE),
+    m_cur(ST_{{ param.states|first|upper }}),
+    m_cmd(ST_{{ param.states|first|upper }}),
+    m_transition_table{
+        {% for state in param.states -%}
+        {
+            {%- for next_state in param.transitiontable[state] -%}
+                {%- if next_state in param.states -%}ST_{{ next_state|upper }}
+                {%- else -%}ST_{{ state|upper }}
+                {%- endif -%}{{ ", " if not loop.last }}
+            {%- endfor -%}
+        }{{ ", " if not loop.last }}
+        {% endfor %}},
+    m_state_transitions{
+        {% for state in param.states -%}
+        {
+            {%- for next_state in param.states -%}
+                {%-  if state == next_state or (state in param.transitiontable and next_state in param.transitiontable[state]) -%}
+                    transition_{{ state|lower }}_{{ next_state|lower }}
+                {%- else -%}
+                    nullptr
+                {%- endif -%}{{ ", " if not loop.last }}
+            {%- endfor -%}
+        }{{ ", " if not loop.last }}
+        {% endfor %}}
+    {}
+    
+inline void {{ param.type }}::Run(const {{ param.type }}Input input, {{ param.fopts.type }} &{{ param.fopts.name }})
+{
+
+    /* transition table - get command from input */
+    if (input < NUM_INPUTS) {
+        m_input = input;
+        m_cmd = m_transition_table[m_cur][input];
+        if (m_cmd == m_cur) {
+            /* not able to go to new state */
+            m_check = TR_BADINPUT;
+        }
+    }
+
+    /* run transition */
+    (this->*m_state_transitions[m_cur][m_cmd])({{ param.fopts.name }});
+
+    /* advance to requested state or return to current state */
+    if (m_cmd != m_cur) {
+        if (m_check == TR_ADVANCE) {
+            (this->*m_state_transitions[m_cmd][m_cmd])({{ param.fopts.name }});
+            m_cur = m_cmd;
+        } else {
+            (this->*m_state_transitions[m_cur][m_cur])({{ param.fopts.name }});
+            m_cmd = m_cur;
+        }
+    }
+
+    /* reset */
+    m_input = IN_NOINPUT;
+    m_check = TR_CONTINUE;
+
+}
+
+
+/*--------------------------*
+ *  RUNNING STATE FUNCTIONS *
+ *--------------------------*/
+{% for state in param.states %}
+/**
+ *  @brief Running function in state `{{ state|lower }}`
+ */
+inline void {{ param.type }}::transition_{{ state|lower }}_{{ state|lower }} \
+({{ param.fopts.type }} &{{ param.fopts.name }}) {
+
+    /* check if this function was called from a transition. */
+    if (m_check == TR_BADINPUT) {
+        /* input m_input not valid to transition from current state (here) */
+    } else if (m_check == TR_ADVANCE) {
+        /* transitioned from m_cur to m_cmd (here) */
+    } else if (m_check == TR_RETREAT) {
+        /* fell back to m_cur (here) from attempted transition to m_cmd */
+    } else {
+        /* no prior transition (m_check == TR_CONTINUE) */
+    }
+
+}
+{% endfor %}
+
+/*----------------------*
+ * TRANSITION FUNCTIONS *
+ *----------------------*/
+{%  for stateone in param.states -%}{%  for statetwo in param.states -%}
+{% if (stateone != statetwo) -%}
+{% if not stateone in param.transitiontable or statetwo in param.transitiontable[stateone] %}
+/**
+ *  @brief Transition function from `{{ stateone|lower }}` to `{{ statetwo|lower }}`
+ *
+ *  @details
+ *
+ *  To advance to '{{ statetwo|lower }}' state, set
+ *  `m_check = TR_ADVANCE;`
+ *  To return to '{{ stateone|lower }}' state, set
+ *  `m_check = TR_RETREAT;`
+ */
+inline void {{ param.type }}::transition_{{ stateone|lower }}_{{ statetwo|lower }} \
+({{ param.fopts.type }} &{{ param.fopts.name }}) {
+
+    /* by default, do not transition (guard/retreat) */
+    (void)({{ param.fopts.name }});
+    m_check = TR_RETREAT;
+
+    /* Transition code goes here.
+
+       NOTE: Before returning from this function,
+       Consider setting transition to
+       advance: m_check = TR_ADVANCE; */
+
+}
+{% endif -%}
+{% endif -%}
+{% endfor -%}
+{% endfor %}
+
+
+""")
+
+
 def mkdir_p(path):
     """Helper function to mimic bash command 'mkdir -p'"""
     try:
@@ -340,6 +535,7 @@ class Fsm(object):
 
         self.param = {
             'type': fsm_param['type'],
+            'cpp': False,
             'states': fsm_param['states'],
             'inputs': fsm_param['inputs'],
             'transitiontable': fsm_param['transitiontable'],
@@ -349,51 +545,75 @@ class Fsm(object):
             }
         }
 
+        if 'cpp' in fsm_param:
+            self.param['cpp'] = fsm_param['cpp']
+
         if 'fopts' in fsm_param:
             if 'type' in fsm_param['fopts']:
                 self.param['fopts']['type'] = fsm_param['fopts']['type']
             if 'name' in fsm_param['fopts']:
                 self.param['fopts']['name'] = fsm_param['fopts']['name']
 
-
     def genccode(self, folder, prefix):
-        """Create C code"""
-
-        # render code templates
-        fsm_decl = _fsm_decl_template.render(prefix=prefix,
-                                             param=self.param)
-        fsm_fcns = _fsm_fcns_template.render(prefix=prefix,
-                                             param=self.param)
-
-        # include file
-        header = {
-            'filename': "{b}.h".format(b=prefix),
-            'basename': prefix,
-            'code': [fsm_decl],
-            'include': []
-        }
-
-        # src file
-        src = {
-            'filename': "{b}.c".format(b=prefix),
-            'code': [fsm_fcns],
-            'include': [header['filename']]
-        }
-
-        # code wrapper templates
-        header_str = _fsm_header_template.render(header=header)
-        src_str = _fsm_src_template.render(src=src)
+        """Create C/C++ code"""
 
         # make directory
         path = os.path.abspath(folder)
         mkdir_p(path)
+        
+        if self.param['cpp']:
 
-        # write header file
-        f = open(os.path.join(path, header['filename']), "w")
-        f.write(header_str)
-        f.close()
+            # C++ template
+            fsm_cpp_decl = _fsm_decl_cpp_template.render(param=self.param,
+                                                         enumerate=enumerate)
+            # include file
+            header_cpp = {
+                'filename': "{b}.h".format(b=prefix),
+                'basename': prefix,
+                'code': [fsm_cpp_decl],
+                'include': []
+            }
+            # code wrapper templates
+            header_cpp_str = _fsm_header_template.render(header=header_cpp,
+                                                         enumerate=enumerate)
+            # write header file
+            f = open(os.path.join(path, header_cpp['filename']), "w")
+            f.write(header_cpp_str)
+            f.close()
 
-        # write source file
-        f = open(os.path.join(path, src['filename']), "w")
-        f.write(src_str)
-        f.close()
+        else:
+
+            # render code templates
+            fsm_decl = _fsm_decl_template.render(prefix=prefix,
+                                                param=self.param)
+            fsm_fcns = _fsm_fcns_template.render(prefix=prefix,
+                                                param=self.param)
+
+            # include file
+            header = {
+                'filename': "{b}.h".format(b=prefix),
+                'basename': prefix,
+                'code': [fsm_decl],
+                'include': []
+            }
+
+            # src file
+            src = {
+                'filename': "{b}.c".format(b=prefix),
+                'code': [fsm_fcns],
+                'include': [header['filename']]
+            }
+
+            # code wrapper templates
+            header_str = _fsm_header_template.render(header=header)
+            src_str = _fsm_src_template.render(src=src)
+
+            # write header file
+            f = open(os.path.join(path, header['filename']), "w")
+            f.write(header_str)
+            f.close()
+
+            # write source file
+            f = open(os.path.join(path, src['filename']), "w")
+            f.write(src_str)
+            f.close()

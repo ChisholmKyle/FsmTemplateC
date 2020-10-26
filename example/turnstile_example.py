@@ -1,6 +1,5 @@
 import sys
 import os
-sys.path.append(os.path.abspath("../"))
 import template.fsm as fsm
 
 # dict parameter for generating FSM
@@ -33,4 +32,4 @@ folder = 'turnstile_example'
 prefix = 'fsm_turnstile'
 
 # generate FSM code
-code = fsm.Fsm(fsm_param).genccode(folder, prefix)
+fsm.Fsm(fsm_param).genccode(folder, prefix)
